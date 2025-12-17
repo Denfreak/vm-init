@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 #################################
-# Colors
+# Colors for output
 #################################
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -40,7 +40,6 @@ fi
 LOG_FILE="/var/log/bootstrap.log"
 touch "$LOG_FILE"
 chmod 600 "$LOG_FILE"
-
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "================================================="
@@ -56,7 +55,7 @@ TIMEZONE="Europe/Moscow"
 SSH_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC+ostkXoo9cJj7bUgWxmljthPKQJ19bTZFy/6ayciUfJ4JfhcrEvCd7K+5ygE+mqWPv0s9C4UKI0yMyOkGzGcq1+kdg8vK7k1CG7K2PxtRctvMbG6Ua9A2oMN3DwpysmslBfruXenszlumMiOy9MmRw4iQ0XAcG1HD8dt4EJZA7EZ8MG3YkqAFYWw+mCG6S89p+MkY6zg5eFT7b5fri4d88FHeW3gGAiEqJF6Lb4QN/FmzSrMkq7G+O344AK52E1s63439n1RR6KWBVDjECMFXUMsGbqicVJ58ULx6Qmq29QvoadGOBFsAfqBo/1kH7s9hARmNCOExy0PkxC96z6aH Joe"
 
 #################################
-# Ensure swap (CRITICAL)
+# Swap
 #################################
 echo -e "${BLUE}-----Checking swap-----${NC}"
 if ! swapon --show | grep -q swap; then
@@ -98,27 +97,18 @@ fi
 # Packages
 #################################
 echo -e "${BLUE}-----Packages-----${NC}"
-
-run dnf install -y vim \
-    --setopt=install_weak_deps=False \
-    --setopt=tsflags=nodocs
-
+run dnf install -y vim --setopt=install_weak_deps=False --setopt=tsflags=nodocs
 run dnf install -y epel-release
 run crb enable
-
-run dnf install -y fail2ban \
-    --setopt=install_weak_deps=False \
-    --setopt=tsflags=nodocs
-
+run dnf install -y fail2ban --setopt=install_weak_deps=False --setopt=tsflags=nodocs
 run dnf upgrade -y --refresh
 
 #################################
-# Sudo
+# Sudo configuration
 #################################
 echo -e "${BLUE}-----Sudo configuration-----${NC}"
 SUDO_FILE="/etc/sudoers.d/wheel_nopasswd"
 TMP=$(mktemp)
-
 echo "%wheel ALL=(ALL) NOPASSWD: ALL" > "$TMP"
 visudo -cf "$TMP" >/dev/null
 run cp "$TMP" "$SUDO_FILE"
@@ -126,7 +116,7 @@ run chmod 0440 "$SUDO_FILE"
 rm -f "$TMP"
 
 #################################
-# User
+# User setup
 #################################
 echo -e "${BLUE}-----User setup-----${NC}"
 id -u "$USER_NAME" &>/dev/null || run useradd -m -s /bin/bash "$USER_NAME"
@@ -150,7 +140,6 @@ echo -e "${BLUE}-----SSH hardening-----${NC}"
 run sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
 run sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
 run sed -i 's/^#\?PermitEmptyPasswords .*/PermitEmptyPasswords no/' /etc/ssh/sshd_config
-
 sshd -t
 run systemctl restart sshd
 
@@ -162,7 +151,6 @@ cat <<EOF > /etc/fail2ban/jail.d/sshd.local
 [sshd]
 enabled = true
 EOF
-
 run systemctl enable fail2ban
 run systemctl restart fail2ban
 
@@ -173,26 +161,43 @@ echo -e "${BLUE}-----Timezone-----${NC}"
 run timedatectl set-timezone "$TIMEZONE"
 
 #################################
-# Shell config
+# Bash history
 #################################
-echo -e "${BLUE}-----Shell configuration-----${NC}"
-
+echo -e "${BLUE}-----Bash history-----${NC}"
 cat <<'EOF' > /etc/profile.d/bash.sh
 if [ -n "$BASH_VERSION" ]; then
     export HISTTIMEFORMAT='[%d %b %H:%M] '
     export HISTSIZE=10000
     export HISTFILESIZE=10000
     shopt -s histappend
+    shopt -s cmdhist
     export PROMPT_COMMAND="history -a"
 fi
 EOF
-
 run chmod 644 /etc/profile.d/bash.sh
 
 #################################
-# Root lock (POINT OF NO RETURN)
+# Colored prompt (reliable)
 #################################
-echo -e "${YELLOW}-----Locking root account (POINT OF NO RETURN)-----${NC}"
+echo -e "${BLUE}-----Colored prompt-----${NC}"
+cat <<'EOF' > /etc/profile.d/custom_prompt.sh
+# Colored prompt for interactive login shells
+[[ $- != *i* ]] && return
+if [[ -z "$CUSTOM_PROMPT_SET" ]]; then
+    if [[ $EUID -eq 0 ]]; then
+        PS1='\[\033[1;38;5;81m\][\u@\h\[\033[00m\] \[\033[1;38;5;32m\]\W\[\033[1;38;5;81m\]]\[\033[00m\]\$ '
+    else
+        PS1='\[\033[1;38;5;84m\][\u@\h\[\033[00m\] \[\033[1;38;5;32m\]\W\[\033[1;38;5;84m\]]\[\033[00m\]\$ '
+    fi
+    export CUSTOM_PROMPT_SET=1
+fi
+EOF
+chmod 644 /etc/profile.d/custom_prompt.sh
+
+#################################
+# Lock root
+#################################
+echo -e "${YELLOW}-----Locking root account-----${NC}"
 run passwd -l root
 
 #################################
