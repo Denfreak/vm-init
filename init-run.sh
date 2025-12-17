@@ -34,7 +34,19 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-echo -e "${BLUE}===== Bootstrap start (dry-run: $DRY_RUN) =====${NC}"
+#################################
+# Logging
+#################################
+LOG_FILE="/var/log/bootstrap.log"
+touch "$LOG_FILE"
+chmod 600 "$LOG_FILE"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "================================================="
+echo " Bootstrap started: $(date)"
+echo " Dry-run mode: $DRY_RUN"
+echo "================================================="
 
 #################################
 # Variables
@@ -83,7 +95,7 @@ else
 fi
 
 #################################
-# Packages (SAFE ORDER)
+# Packages
 #################################
 echo -e "${BLUE}-----Packages-----${NC}"
 
@@ -101,7 +113,7 @@ run dnf install -y fail2ban \
 run dnf upgrade -y --refresh
 
 #################################
-# Sudo for wheel
+# Sudo
 #################################
 echo -e "${BLUE}-----Sudo configuration-----${NC}"
 SUDO_FILE="/etc/sudoers.d/wheel_nopasswd"
@@ -186,5 +198,7 @@ run passwd -l root
 #################################
 # Finish
 #################################
-echo -e "${GREEN}===== Bootstrap finished =====${NC}"
+echo "================================================="
+echo " Bootstrap finished: $(date)"
+echo "================================================="
 echo -e "${YELLOW}Reboot recommended${NC}"
